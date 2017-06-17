@@ -1,0 +1,288 @@
+---
+title: "Milestone 1: Exploratory Data Analysis"
+author: "jrfoster"
+bibliography: "bibliography.bib"
+biblio-style: "BibTeX"
+date: "May 14, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r definition, echo=FALSE}
+assertPackage <- function(pkg) {
+  ##################################################################################
+  # Loads and attaches the given package, installing it if not already present.  
+  # Note that the implementation uses require.  ?require for more information.
+  #
+  # Args:
+  #   pkg: The package to check given as a name or a character string
+  #
+  # Side Effects:
+  # This method installs dependent packages of the given package.
+  # If not able to install what is required, halts termination.
+  ##################################################################################
+  if (!suppressMessages(require(pkg, character.only = TRUE, quietly = TRUE))) {
+    install.packages(pkg, dep=TRUE)
+    if (!suppressMessages(require(pkg, character.only = TRUE))) {
+      stop("Package not found")
+    }
+  }
+}
+
+assertData <- function() {
+  ##################################################################################
+  # Checks for the existence of the three text files contained in the capstone data
+  # set.  If all are not present, checks for the existence of the archive to extract
+  # them. If the archive is not present it downlaods it from the given location and
+  # extracts the entire archive and removes it to conserve space.
+  #
+  # Side Effects:
+  # Will create a directory called Coursera-Swiftkey in the working directory which
+  # will contain the files from the capstone data set.
+  ##################################################################################
+  dataDir <- file.path(getwd(), "Coursera-SwiftKey", "final", "en_US")
+  if (!file.exists(file.path(dataDir, "en_US.blogs.txt")) ||
+      !file.exists(file.path(dataDir, "en_US.news.txt")) ||
+      !file.exists(file.path(dataDir, "en_US.twitter.txt"))) {
+    if (!file.exists(file.path(getwd(), "Coursera-SwiftKey.zip"))) {
+      download.file("https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip", 
+        destfile = "Coursera-SwiftKey.zip")
+    }
+    unzip("Coursera-SwiftKey.zip", exdir = "Coursera-SwiftKey", overwrite = TRUE)
+    file.remove("Coursera-SwiftKey.zip")
+  }
+}
+
+readText <- function(filepath) {
+  ##################################################################################
+  # Returns a dataframe containing the contents of the file given by the argument.
+  # Note that this implementation reads the files in binary mode to get around the
+  # existence of a substitute character in one of the data files, skips nulls and
+  # assumes the file is encoded as UTF-8.
+  #
+  # Args:
+  #   filepath: The fully qualified path to the file to read
+  # 
+  # Returns: 
+  #   Character vector of content of the given file
+  ##################################################################################
+  connection <- file(filepath, open = "rb")
+  on.exit(close(connection))
+  data <- readLines(con = connection, encoding = "UTF-8", skipNul = TRUE)
+  data
+}
+
+cleanup <- function() {
+  ##################################################################################
+  # Attempts to clean up no longer used resources all at once prior to more memory
+  # intensive routines are performed.  Note that gc() is run a after these
+  # items are removed
+  ##################################################################################
+  rm(blog)
+  rm(blogCorpus)
+  rm(blogIn)
+  rm(blogSample)
+  rm(news)
+  rm(newsCorpus)
+  rm(newsIn)
+  rm(newsSample)
+  rm(twtr)
+  rm(twtrCorpus)
+  rm(twtrIn)
+  rm(twtrSample)
+  gc()
+}
+
+
+```
+
+
+## Executive Summary
+
+The Capstone project requires us to build an application that can predict the next word based on words the user has already entered, similar to how the text keyboard words on iOS and Android. This Milestone Report will detail the process of obtaining the data to be used in the analysis phase and will explore some interesting features of the raw data based on a random sample.
+
+Note that some of the code in this work has been adapted from ideas presented by [@Williams1] and [@Marwick1] as well as work I've previously done as a part of this specialization.
+
+## Obtain and Load Raw Data
+
+The data is downloaded from the location given in the Capstone project and extracted into a named sub-directory within the current working directory. The appendix contains the code for the custom functions used to obtain and stage the data.
+
+```{r data, error=FALSE, warning=FALSE}
+assertPackage("tm")
+assertPackage("knitr")
+assertPackage("RWeka")
+assertPackage("stringi")
+assertPackage("parallel")
+assertPackage("dplyr")
+assertPackage("ggplot2")
+
+assertData()
+
+dataDir <- file.path(getwd(), "Coursera-SwiftKey", "final", "en_US")
+blog <- readText(file.path(dataDir, "en_US.blogs.txt"))
+news <- readText(file.path(dataDir, "en_US.news.txt"))
+twtr <- readText(file.path(dataDir, "en_US.twitter.txt"))
+```
+
+Now that the data is loaded we can obtain some basic summary statistics about it, which are displayed in the following table.
+
+```{r stats}
+kable(
+  data.frame(
+        c("Blogs", "News", "Twitter"),
+        c(length(blog), length(news), length(twtr)),
+        c(sum(nchar(blog)), sum(nchar(news)), sum(nchar(twtr))),
+        c(sum(stri_count(blog, regex="\\S+")), 
+          sum(stri_count(news, regex="\\S+")), 
+          sum(stri_count(twtr,regex="\\S+")))),
+  col.names = c("Source", "Line Count", "Character Count", "Word Count"))
+```
+
+### Interesting Features
+
+Even though the files are large, its interesting to open them up in a text editor just to get a feel for some of the content of the raw files. In examining the data in each of the files there are a few interesting features that should be noted and that must be eventually accounted for, especially later when determining parts of speech. In the Twitter data, we will need to account for the use of Twitter account names (words prefixed with @), hashtags (words prefixed with #), cashtags (words prefixed with a $), internet slang and acronyms (e.g. 'omg', 'lol', 'jk', et al), emojis and other graphical characters, and the fact that users often purposely misspell words to fit the 140 character limit for a tweet. Contrast this last point to blogs and news articles which are far more likely to be grammatically correct and are assumed to contain fewer misspellings. For more information on Twitter, see [@Twitter1].
+
+The data contain a significant number of URLs in various forms, which are not likely to add any value to any prediction models. Additionally, the data contain punctuation characters, numbers, and are a mix of upper- and lower-case words. Note that I am purposely leaving in the stop-words in this initial examination, even though they are commonly excluded, largely because the predictive applications I have seen include them in their predictions.
+
+## Clean Data and Create Corpus
+
+To summarize, the following transformations will be performed on the raw data:
+
+* Removal of graphical characters
+* Converting all remaining text to lower case
+* Removal of URLS in their most common forms
+* Removal of hashtags, cashtags and Twitter account names
+* Removal of remaining punctuation characters
+* Removal of numbers
+* Removal of extraneous white space
+
+The data are sufficiently large that even with parallel processing producing a matrix of word counts using the entire corpus is impossible, given the computing resources available to me. However, this won't really be necessary, since if we take a random sample from each of the sources it will suffice to draw some inference as to the frequency of words and the common n-grams of words from this sample. To create our random sample, we use the outcome of a binomial distribution, which essentially allows for simple inclusion/exclusion of a line of text based on a biased coin flip.
+
+```{r transformations}
+# Try to speed things up using parallel processing
+no_cores <- detectCores() - 1
+cluster <- makeCluster(no_cores)
+tm_parLapply_engine(cluster)
+
+# Set the seed for reproducibility
+set.seed(13031)
+
+# Limit each of the raw sources to approximately 1% using rbinom and subsetting, then create corpus
+blogIn <- rbinom(n=length(blog), size=1, prob=.01)
+blogSample <- blog[blogIn == 1]
+newsIn <- rbinom(n=length(news), size=1, prob=.01)
+newsSample <- news[newsIn == 1]
+twtrIn <- rbinom(n=length(twtr), size=1, prob=.01)
+twtrSample <- twtr[twtrIn == 1]
+
+# Create the Corpus from the samples
+blogCorpus <- VCorpus(VectorSource(blogSample))
+newsCorpus <- VCorpus(VectorSource(newsSample))
+twtrCorpus <- VCorpus(VectorSource(twtrSample))
+corpus <- c(blogCorpus, newsCorpus, twtrCorpus)
+
+# Define a couple custom content transformers
+toSpace <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
+toEmpty <- content_transformer(function(x, pattern) gsub(pattern, "", x))
+
+# Transformations to clean the corpus of various items
+corpus <- tm_map(corpus, toSpace, "[^[:graph:]]")
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, toEmpty, " ?(f|ht)tp(s?)://(.*)[.][a-z]+")
+corpus <- tm_map(corpus, toEmpty, "www.*")
+corpus <- tm_map(corpus, toEmpty, "#\\S+")
+corpus <- tm_map(corpus, toEmpty, "$\\S+")
+corpus <- tm_map(corpus, toEmpty, "@\\S+")
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, stripWhitespace)
+```
+
+## Common N-Grams in Sample Data
+
+Having built the corpus and performed the necessary transformations and cleanup, the next thing we want is to visualize what the most common 1- and 2- and 3-word phrases exist in the corpus sample.
+
+```{r ngrams}
+unigramTokenizer <- function(x) RWeka::NGramTokenizer(x, RWeka::Weka_control(min = 1, max = 1))
+unigramTdm <- TermDocumentMatrix(corpus, control = list(tokenize = unigramTokenizer))
+freqUni <- findFreqTerms(unigramTdm, lowfreq = 750)
+freqUni <- sort(rowSums(as.matrix(unigramTdm[freqUni,])), decreasing = TRUE)
+uniDf <- data.frame(unigram = names(freqUni), frequency = freqUni)
+
+bigramTokenizer <- function(x) RWeka::NGramTokenizer(x, RWeka::Weka_control(min = 2, max = 2))
+bigramTdm <- TermDocumentMatrix(corpus, control = list(tokenize = bigramTokenizer))
+freqBi <- findFreqTerms(bigramTdm, lowfreq = 250)
+freqBi <- sort(rowSums(as.matrix(bigramTdm[freqBi,])), decreasing = TRUE)
+biDf <- data.frame(bigram = names(freqBi), frequency = freqBi)
+
+trigramTokenizer <- function(x) RWeka::NGramTokenizer(x, RWeka::Weka_control(min = 3, max = 3))
+trigramTdm <- TermDocumentMatrix(corpus, control = list(tokenize = trigramTokenizer))
+freqTri <- findFreqTerms(trigramTdm, lowfreq = 40)
+freqTri <- sort(rowSums(as.matrix(trigramTdm[freqTri,])), decreasing = TRUE)
+triDf <- data.frame(trigram = names(freqTri), frequency = freqTri)
+```
+
+Here we can see the most frequent unigrams. As expected, the top words are many of the standard English stop-words.
+
+```{r uniGraph, fig.height=7}
+uniGraph <- uniDf %>%
+  top_n(n = 50, wt = frequency) %>%
+  ggplot(aes(x=reorder(unigram, frequency), y = frequency)) + 
+    geom_bar(stat="identity", fill="cornflowerblue") + 
+    xlab("Unigram") + 
+    ylab("Frequency") +
+    labs(title="Top 50 Unigrams by Frequency") + 
+    coord_flip()
+uniGraph
+```
+
+Here are the top 50 bigrams.  Again, many of these contain stop-words.
+
+```{r biGraph, fig.height=7}
+biGraph <- biDf %>%
+  top_n(n = 50, wt = frequency) %>%
+  ggplot(aes(x=reorder(bigram, frequency), y = frequency)) + 
+    geom_bar(stat="identity", fill="cornflowerblue") + 
+    xlab("Bigram") + 
+    ylab("Frequency") +
+    labs(title="Top 50 Bigrams by Frequency") + 
+    coord_flip()
+biGraph
+```
+
+Finally, here are the list of the top 50 trigrams.
+
+```{r triGraph, fig.height=7}
+triGraph <- triDf %>%
+  top_n(n = 50, wt = frequency) %>%
+  ggplot(aes(x=reorder(trigram, frequency), y = frequency)) + 
+    geom_bar(stat="identity", fill="cornflowerblue") + 
+    xlab("Trigram") + 
+    ylab("Frequency") +
+    labs(title="Top 50 Trigrams by Frequency") + 
+    coord_flip()
+triGraph
+```
+
+## Next Steps and Plan for Project
+
+While these visualizations are informative, there are a number of things still to address when working toward a performant and accurate model.  Overall I am trying to make something in Shiny that is very responsive to the user typing, so it will need to employ some sort of "look back" at the words entered and use the model to predict what it thinks is next.  I'm hoping to provide suggestions, similar to how iOS does in its text app.
+
+Generally speaking, I plan to investigate the following 
+
+* Slow n-gram generation.  There should be a way to save the generated n-grams to be more quickly loaded and useful to the algorithm. It will also have to to go beyond trigrams, but how far beyond I need to think about and try some things.
+* Correlation between common n-grams.  The tm library provides a way to to examine the correlation between some of the more common words and phrases.
+* Resolve whether or not to include stop-words.  Its not clear yet to me which way would be correct, but I'm leaning toward including them in the prediction model, since the goal is to predict natural language.
+
+## Appendix
+
+This appendix contains code for the supporting functions used in this analysis.
+
+```{r definition, echo=TRUE, eval=FALSE}
+```
+
+## References
+
