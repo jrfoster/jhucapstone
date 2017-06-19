@@ -1,0 +1,495 @@
+﻿<?xml version="1.0"?>
+<DTS:Executable xmlns:DTS="www.microsoft.com/SqlServer/Dts"
+  DTS:refId="Package"
+  DTS:CreationDate="6/19/2017 12:10:59 PM"
+  DTS:CreationName="Microsoft.Package"
+  DTS:CreatorComputerName="DENORALT219"
+  DTS:CreatorName="STAT\jfoster"
+  DTS:DTSID="{45018694-A35E-4D1F-A994-A6C670A90D22}"
+  DTS:ExecutableType="Microsoft.Package"
+  DTS:LastModifiedProductVersion="13.0.2165.0"
+  DTS:LocaleID="1033"
+  DTS:ObjectName="2_Compte_Scores_Prune"
+  DTS:PackageType="5"
+  DTS:VersionBuild="5"
+  DTS:VersionGUID="{2954076B-22BA-4C98-A89A-CD9AF3657D35}">
+  <DTS:Property
+    DTS:Name="PackageFormatVersion">8</DTS:Property>
+  <DTS:ConnectionManagers>
+    <DTS:ConnectionManager
+      DTS:refId="Package.ConnectionManagers[DENORALT219.ngrams]"
+      DTS:CreationName="OLEDB"
+      DTS:DTSID="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+      DTS:ObjectName="DENORALT219.ngrams">
+      <DTS:ObjectData>
+        <DTS:ConnectionManager
+          DTS:ConnectionString="Data Source=DENORALT219;Initial Catalog=ngrams;Provider=SQLNCLI11.1;Integrated Security=SSPI;Auto Translate=False;" />
+      </DTS:ObjectData>
+    </DTS:ConnectionManager>
+  </DTS:ConnectionManagers>
+  <DTS:Variables />
+  <DTS:Executables>
+    <DTS:Executable
+      DTS:refId="Package\Create Pruning Tables"
+      DTS:CreationName="Microsoft.ExecuteSQLTask"
+      DTS:Description="Execute SQL Task"
+      DTS:DTSID="{FA81CBA6-0770-45D3-AD7E-E8E0A16C973E}"
+      DTS:ExecutableType="Microsoft.ExecuteSQLTask"
+      DTS:LocaleID="-1"
+      DTS:ObjectName="Create Pruning Tables"
+      DTS:TaskContact="Execute SQL Task; Microsoft Corporation; SQL Server 2016; © 2015 Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1"
+      DTS:ThreadHint="0">
+      <DTS:Variables />
+      <DTS:ObjectData>
+        <SQLTask:SqlTaskData
+          SQLTask:Connection="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+          SQLTask:SqlStatementSource="create table unigrams (&#xA;&#x9;word varchar(255) not null,&#xA;&#x9;frequency int not null,&#xA;&#x9;relFreq numeric(20,10) not null)&#xA;&#xA;create table bigrams (&#xA;&#x9;root varchar(max) not null,&#xA;&#x9;word varchar(255) not null,&#xA;&#x9;relFreq numeric(20,10) not null)&#xA;&#xA;create table trigrams (&#xA;&#x9;root varchar(max) not null,&#xA;&#x9;word varchar(255) not null,&#xA;&#x9;relFreq numeric(20,10) not null)&#xA;&#xA;create table quadragrams (&#xA;&#x9;root varchar(max) not null,&#xA;&#x9;word varchar(255) not null,&#xA;&#x9;relFreq numeric(20,10) not null)&#xA;&#xA;create table quintagrams (&#xA;&#x9;root varchar(max) not null,&#xA;&#x9;word varchar(255) not null,&#xA;&#x9;relFreq numeric(20,10) not null)" xmlns:SQLTask="www.microsoft.com/sqlserver/dts/tasks/sqltask" />
+      </DTS:ObjectData>
+    </DTS:Executable>
+    <DTS:Executable
+      DTS:refId="Package\Sequence Container"
+      DTS:CreationName="STOCK:SEQUENCE"
+      DTS:Description="Sequence Container"
+      DTS:DTSID="{9E8619CC-1B6A-41EC-8D82-7D1DF0D16AE9}"
+      DTS:ExecutableType="STOCK:SEQUENCE"
+      DTS:LocaleID="-1"
+      DTS:ObjectName="Sequence Container">
+      <DTS:Variables />
+      <DTS:Executables>
+        <DTS:Executable
+          DTS:refId="Package\Sequence Container\Compute Bigram RelFreq"
+          DTS:CreationName="Microsoft.ExecuteSQLTask"
+          DTS:Description="Execute SQL Task"
+          DTS:DTSID="{3a18c4f8-b02f-43d8-8abe-128e43e14518}"
+          DTS:ExecutableType="Microsoft.ExecuteSQLTask"
+          DTS:LocaleID="-1"
+          DTS:ObjectName="Compute Bigram RelFreq"
+          DTS:TaskContact="Execute SQL Task; Microsoft Corporation; SQL Server 2016; © 2015 Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1"
+          DTS:ThreadHint="0">
+          <DTS:Variables />
+          <DTS:ObjectData>
+            <SQLTask:SqlTaskData
+              SQLTask:Connection="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+              SQLTask:SqlStatementSource="update combined_bigrams&#xA;set relFreq = convert(numeric(20,10),b.frequency) / a.frequency&#xA;from combined_bigrams b&#xA;&#x9;join combined_unigrams a on a.ngram = substring(b.ngram, 1, charindex('_', b.ngram)-1)&#xA;" xmlns:SQLTask="www.microsoft.com/sqlserver/dts/tasks/sqltask" />
+          </DTS:ObjectData>
+        </DTS:Executable>
+        <DTS:Executable
+          DTS:refId="Package\Sequence Container\Compute Quadragram RelFreq"
+          DTS:CreationName="Microsoft.ExecuteSQLTask"
+          DTS:Description="Execute SQL Task"
+          DTS:DTSID="{fd5f5cda-bd7f-42d8-b82c-ea4da29c248b}"
+          DTS:ExecutableType="Microsoft.ExecuteSQLTask"
+          DTS:LocaleID="-1"
+          DTS:ObjectName="Compute Quadragram RelFreq"
+          DTS:TaskContact="Execute SQL Task; Microsoft Corporation; SQL Server 2016; © 2015 Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1"
+          DTS:ThreadHint="1">
+          <DTS:Variables />
+          <DTS:ObjectData>
+            <SQLTask:SqlTaskData
+              SQLTask:Connection="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+              SQLTask:SqlStatementSource="update combined_quadragrams&#xA;set relFreq = convert(numeric(20,10),b.frequency) / a.frequency&#xA;from combined_quadragrams b&#xA;&#x9;join combined_trigrams a on a.ngram = left(b.ngram, len(b.ngram) - charindex('_', reverse(b.ngram) + '_'))&#xA;" xmlns:SQLTask="www.microsoft.com/sqlserver/dts/tasks/sqltask" />
+          </DTS:ObjectData>
+        </DTS:Executable>
+        <DTS:Executable
+          DTS:refId="Package\Sequence Container\Compute Quintagram RelFreq"
+          DTS:CreationName="Microsoft.ExecuteSQLTask"
+          DTS:Description="Execute SQL Task"
+          DTS:DTSID="{aae73342-8e0a-4f3a-8846-dc1b140b5f15}"
+          DTS:ExecutableType="Microsoft.ExecuteSQLTask"
+          DTS:LocaleID="-1"
+          DTS:ObjectName="Compute Quintagram RelFreq"
+          DTS:TaskContact="Execute SQL Task; Microsoft Corporation; SQL Server 2016; © 2015 Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1"
+          DTS:ThreadHint="2">
+          <DTS:Variables />
+          <DTS:ObjectData>
+            <SQLTask:SqlTaskData
+              SQLTask:Connection="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+              SQLTask:SqlStatementSource="update combined_quintagrams&#xA;set relFreq = convert(numeric(20,10),b.frequency) / a.frequency&#xA;from combined_quintagrams b&#xA;&#x9;join combined_quadragrams a on a.ngram = left(b.ngram, len(b.ngram) - charindex('_', reverse(b.ngram) + '_'))" xmlns:SQLTask="www.microsoft.com/sqlserver/dts/tasks/sqltask" />
+          </DTS:ObjectData>
+        </DTS:Executable>
+        <DTS:Executable
+          DTS:refId="Package\Sequence Container\Compute Trigram RelFreq"
+          DTS:CreationName="Microsoft.ExecuteSQLTask"
+          DTS:Description="Execute SQL Task"
+          DTS:DTSID="{16a06f89-3d60-416f-b3ec-95d470bdcf00}"
+          DTS:ExecutableType="Microsoft.ExecuteSQLTask"
+          DTS:LocaleID="-1"
+          DTS:ObjectName="Compute Trigram RelFreq"
+          DTS:TaskContact="Execute SQL Task; Microsoft Corporation; SQL Server 2016; © 2015 Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1"
+          DTS:ThreadHint="3">
+          <DTS:Variables />
+          <DTS:ObjectData>
+            <SQLTask:SqlTaskData
+              SQLTask:Connection="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+              SQLTask:SqlStatementSource="update combined_trigrams&#xA;set relFreq = convert(numeric(20,10),b.frequency) / a.frequency&#xA;from combined_trigrams b&#xA;&#x9;join combined_bigrams a on a.ngram = left(b.ngram, len(b.ngram) - charindex('_', reverse(b.ngram) + '_'))&#xA;" xmlns:SQLTask="www.microsoft.com/sqlserver/dts/tasks/sqltask" />
+          </DTS:ObjectData>
+        </DTS:Executable>
+        <DTS:Executable
+          DTS:refId="Package\Sequence Container\Compute Unigram RelFreq"
+          DTS:CreationName="Microsoft.ExecuteSQLTask"
+          DTS:Description="Execute SQL Task"
+          DTS:DTSID="{EED0B2AC-DA29-4773-AD53-9967F1407512}"
+          DTS:ExecutableType="Microsoft.ExecuteSQLTask"
+          DTS:LocaleID="-1"
+          DTS:ObjectName="Compute Unigram RelFreq"
+          DTS:TaskContact="Execute SQL Task; Microsoft Corporation; SQL Server 2016; © 2015 Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1"
+          DTS:ThreadHint="4">
+          <DTS:Variables />
+          <DTS:ObjectData>
+            <SQLTask:SqlTaskData
+              SQLTask:Connection="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+              SQLTask:SqlStatementSource="declare @uniCnt integer&#xA;select @uniCnt = count(*) from combined_unigrams&#xA;&#xA;update combined_unigrams&#xA;set relFreq = convert(numeric(20,10), frequency) / @uniCnt" xmlns:SQLTask="www.microsoft.com/sqlserver/dts/tasks/sqltask" />
+          </DTS:ObjectData>
+        </DTS:Executable>
+        <DTS:Executable
+          DTS:refId="Package\Sequence Container\Prune Bigrams"
+          DTS:CreationName="Microsoft.ExecuteSQLTask"
+          DTS:Description="Execute SQL Task"
+          DTS:DTSID="{7a2330bd-149f-4e5f-b5be-722edf4af610}"
+          DTS:ExecutableType="Microsoft.ExecuteSQLTask"
+          DTS:LocaleID="-1"
+          DTS:ObjectName="Prune Bigrams"
+          DTS:TaskContact="Execute SQL Task; Microsoft Corporation; SQL Server 2016; © 2015 Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1"
+          DTS:ThreadHint="0">
+          <DTS:Variables />
+          <DTS:ObjectData>
+            <SQLTask:SqlTaskData
+              SQLTask:Connection="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+              SQLTask:SqlStatementSource="truncate table bigrams&#xA;insert bigrams&#xA;select&#xA;&#x9;left(ngram, len(ngram) - charindex('_', reverse(ngram) + '_'))&#xA;&#x9;,right(ngram, charindex('_', reverse(ngram) + '_') - 1)&#xA;&#x9;,relFreq&#xA;from combined_bigrams&#xA;where frequency &gt; 2" xmlns:SQLTask="www.microsoft.com/sqlserver/dts/tasks/sqltask" />
+          </DTS:ObjectData>
+        </DTS:Executable>
+        <DTS:Executable
+          DTS:refId="Package\Sequence Container\Prune Quadragrams"
+          DTS:CreationName="Microsoft.ExecuteSQLTask"
+          DTS:Description="Execute SQL Task"
+          DTS:DTSID="{39168024-0f9d-45da-9c6a-83dcacf7e388}"
+          DTS:ExecutableType="Microsoft.ExecuteSQLTask"
+          DTS:LocaleID="-1"
+          DTS:ObjectName="Prune Quadragrams"
+          DTS:TaskContact="Execute SQL Task; Microsoft Corporation; SQL Server 2016; © 2015 Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1"
+          DTS:ThreadHint="1">
+          <DTS:Variables />
+          <DTS:ObjectData>
+            <SQLTask:SqlTaskData
+              SQLTask:Connection="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+              SQLTask:SqlStatementSource="truncate table quadragrams&#xA;insert quadragrams&#xA;select&#xA;&#x9;left(ngram, len(ngram) - charindex('_', reverse(ngram) + '_'))&#xA;&#x9;,right(ngram, charindex('_', reverse(ngram) + '_') - 1)&#xA;&#x9;,relFreq&#xA;from combined_quadragrams&#xA;where frequency &gt; 2" xmlns:SQLTask="www.microsoft.com/sqlserver/dts/tasks/sqltask" />
+          </DTS:ObjectData>
+        </DTS:Executable>
+        <DTS:Executable
+          DTS:refId="Package\Sequence Container\Prune Quintagrams"
+          DTS:CreationName="Microsoft.ExecuteSQLTask"
+          DTS:Description="Execute SQL Task"
+          DTS:DTSID="{f11bee01-fd98-487a-bf0b-7653d8fee016}"
+          DTS:ExecutableType="Microsoft.ExecuteSQLTask"
+          DTS:LocaleID="-1"
+          DTS:ObjectName="Prune Quintagrams"
+          DTS:TaskContact="Execute SQL Task; Microsoft Corporation; SQL Server 2016; © 2015 Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1"
+          DTS:ThreadHint="2">
+          <DTS:Variables />
+          <DTS:ObjectData>
+            <SQLTask:SqlTaskData
+              SQLTask:Connection="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+              SQLTask:SqlStatementSource="truncate table quintagrams&#xA;insert quintagrams&#xA;select&#xA;&#x9;left(ngram, len(ngram) - charindex('_', reverse(ngram) + '_'))&#xA;&#x9;,right(ngram, charindex('_', reverse(ngram) + '_') - 1)&#xA;&#x9;,relFreq&#xA;from combined_quintagrams&#xA;where frequency &gt; 2" xmlns:SQLTask="www.microsoft.com/sqlserver/dts/tasks/sqltask" />
+          </DTS:ObjectData>
+        </DTS:Executable>
+        <DTS:Executable
+          DTS:refId="Package\Sequence Container\Prune Trigrams"
+          DTS:CreationName="Microsoft.ExecuteSQLTask"
+          DTS:Description="Execute SQL Task"
+          DTS:DTSID="{38E3EDF1-9FE9-4875-B9AF-AE488ACCBA4C}"
+          DTS:ExecutableType="Microsoft.ExecuteSQLTask"
+          DTS:LocaleID="-1"
+          DTS:ObjectName="Prune Trigrams"
+          DTS:TaskContact="Execute SQL Task; Microsoft Corporation; SQL Server 2016; © 2015 Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1"
+          DTS:ThreadHint="3">
+          <DTS:Variables />
+          <DTS:ObjectData>
+            <SQLTask:SqlTaskData
+              SQLTask:Connection="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+              SQLTask:SqlStatementSource="truncate table trigrams&#xA;insert trigrams&#xA;select&#xA;&#x9;left(ngram, len(ngram) - charindex('_', reverse(ngram) + '_'))&#xA;&#x9;,right(ngram, charindex('_', reverse(ngram) + '_') - 1)&#xA;&#x9;,relFreq&#xA;from combined_trigrams&#xA;where frequency &gt; 2" xmlns:SQLTask="www.microsoft.com/sqlserver/dts/tasks/sqltask" />
+          </DTS:ObjectData>
+        </DTS:Executable>
+        <DTS:Executable
+          DTS:refId="Package\Sequence Container\Prune Unigrams"
+          DTS:CreationName="Microsoft.ExecuteSQLTask"
+          DTS:Description="Execute SQL Task"
+          DTS:DTSID="{1890D399-620A-40A3-88BD-295A5A246674}"
+          DTS:ExecutableType="Microsoft.ExecuteSQLTask"
+          DTS:LocaleID="-1"
+          DTS:ObjectName="Prune Unigrams"
+          DTS:TaskContact="Execute SQL Task; Microsoft Corporation; SQL Server 2016; © 2015 Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1"
+          DTS:ThreadHint="4">
+          <DTS:Variables />
+          <DTS:ObjectData>
+            <SQLTask:SqlTaskData
+              SQLTask:Connection="{9F22C0E8-59B5-42C6-BBAF-6AD182524B5F}"
+              SQLTask:SqlStatementSource="truncate table unigrams&#xA;insert unigrams&#xA;select &#xA;&#x9;ngram&#xA;&#x9;,frequency&#xA;&#x9;,relFreq&#xA;from combined_unigrams&#xA;where frequency &gt; 1&#xA;" xmlns:SQLTask="www.microsoft.com/sqlserver/dts/tasks/sqltask" />
+          </DTS:ObjectData>
+        </DTS:Executable>
+      </DTS:Executables>
+      <DTS:PrecedenceConstraints>
+        <DTS:PrecedenceConstraint
+          DTS:refId="Package\Sequence Container.PrecedenceConstraints[Constraint]"
+          DTS:CreationName=""
+          DTS:DTSID="{EEAC94DA-1FE1-491C-A590-21AFB0EC587B}"
+          DTS:From="Package\Sequence Container\Compute Unigram RelFreq"
+          DTS:LogicalAnd="True"
+          DTS:ObjectName="Constraint"
+          DTS:To="Package\Sequence Container\Prune Unigrams" />
+        <DTS:PrecedenceConstraint
+          DTS:refId="Package\Sequence Container.PrecedenceConstraints[Constraint 1]"
+          DTS:CreationName=""
+          DTS:DTSID="{54B50870-2D81-4EED-AAC9-C8267758C54B}"
+          DTS:From="Package\Sequence Container\Compute Bigram RelFreq"
+          DTS:LogicalAnd="True"
+          DTS:ObjectName="Constraint 1"
+          DTS:To="Package\Sequence Container\Prune Bigrams" />
+        <DTS:PrecedenceConstraint
+          DTS:refId="Package\Sequence Container.PrecedenceConstraints[Constraint 2]"
+          DTS:CreationName=""
+          DTS:DTSID="{983B0C82-BE7C-4D99-AD00-C1F23C7CDD4D}"
+          DTS:From="Package\Sequence Container\Compute Trigram RelFreq"
+          DTS:LogicalAnd="True"
+          DTS:ObjectName="Constraint 2"
+          DTS:To="Package\Sequence Container\Prune Trigrams" />
+        <DTS:PrecedenceConstraint
+          DTS:refId="Package\Sequence Container.PrecedenceConstraints[Constraint 3]"
+          DTS:CreationName=""
+          DTS:DTSID="{EE88EF81-DBB0-4C27-A442-0C636D555F5C}"
+          DTS:From="Package\Sequence Container\Compute Quadragram RelFreq"
+          DTS:LogicalAnd="True"
+          DTS:ObjectName="Constraint 3"
+          DTS:To="Package\Sequence Container\Prune Quadragrams" />
+        <DTS:PrecedenceConstraint
+          DTS:refId="Package\Sequence Container.PrecedenceConstraints[Constraint 4]"
+          DTS:CreationName=""
+          DTS:DTSID="{0A7FFD4B-AA13-4C68-B230-9F42BB5D30B3}"
+          DTS:From="Package\Sequence Container\Compute Quintagram RelFreq"
+          DTS:LogicalAnd="True"
+          DTS:ObjectName="Constraint 4"
+          DTS:To="Package\Sequence Container\Prune Quintagrams" />
+      </DTS:PrecedenceConstraints>
+    </DTS:Executable>
+  </DTS:Executables>
+  <DTS:PrecedenceConstraints>
+    <DTS:PrecedenceConstraint
+      DTS:refId="Package.PrecedenceConstraints[Constraint]"
+      DTS:CreationName=""
+      DTS:DTSID="{33A08A7B-78D5-43FA-AA76-2C9A50E4C4FC}"
+      DTS:From="Package\Create Pruning Tables"
+      DTS:LogicalAnd="True"
+      DTS:ObjectName="Constraint"
+      DTS:To="Package\Sequence Container" />
+  </DTS:PrecedenceConstraints>
+  <DTS:DesignTimeProperties><![CDATA[<?xml version="1.0"?>
+<!--This CDATA section contains the layout information of the package. The section includes information such as (x,y) coordinates, width, and height.-->
+<!--If you manually edit this section and make a mistake, you can delete it. -->
+<!--The package will still be able to load normally but the previous layout information will be lost and the designer will automatically re-arrange the elements on the design surface.-->
+<Objects
+  Version="8">
+  <!--Each node below will contain properties that do not affect runtime behavior.-->
+  <Package
+    design-time-name="Package">
+    <LayoutInfo>
+      <GraphLayout
+        Capacity="32" xmlns="clr-namespace:Microsoft.SqlServer.IntegrationServices.Designer.Model.Serialization;assembly=Microsoft.SqlServer.IntegrationServices.Graph" xmlns:mssgle="clr-namespace:Microsoft.SqlServer.Graph.LayoutEngine;assembly=Microsoft.SqlServer.Graph" xmlns:assembly="http://schemas.microsoft.com/winfx/2006/xaml">
+        <NodeLayout
+          Size="180.8,41.6"
+          Id="Package\Create Pruning Tables"
+          TopLeft="17.1428574347983,188.773111682803" />
+        <NodeLayout
+          Size="225.6,43.2"
+          Id="Package\Sequence Container\Compute Bigram RelFreq"
+          TopLeft="21.3877549894349,82.1848744177901" />
+        <NodeLayout
+          Size="221.6,41.6"
+          Id="Package\Sequence Container\Compute Quadragram RelFreq"
+          TopLeft="24.4081632041374,224.994957604458" />
+        <NodeLayout
+          Size="218.4,41.6"
+          Id="Package\Sequence Container\Compute Quintagram RelFreq"
+          TopLeft="23.5918366596232,293.87226821015" />
+        <NodeLayout
+          Size="229.6,41.6"
+          Id="Package\Sequence Container\Compute Trigram RelFreq"
+          TopLeft="21.387754989435,150.487394959209" />
+        <NodeLayout
+          Size="228,45.6"
+          Id="Package\Sequence Container\Compute Unigram RelFreq"
+          TopLeft="21.1428570260806,8.90084120146546" />
+        <NodeLayout
+          Size="153.6,41.6"
+          Id="Package\Sequence Container\Prune Bigrams"
+          TopLeft="345.224495198219,85.5899109790892" />
+        <NodeLayout
+          Size="172.8,41.6"
+          Id="Package\Sequence Container\Prune Quadragrams"
+          TopLeft="341.959189020163,229.421845713289" />
+        <NodeLayout
+          Size="172.8,41.6"
+          Id="Package\Sequence Container\Prune Quintagrams"
+          TopLeft="341.959189020163,299.337813080388" />
+        <NodeLayout
+          Size="150.4,41.6"
+          Id="Package\Sequence Container\Prune Trigrams"
+          TopLeft="344.000006130764,154.26891046789" />
+        <NodeLayout
+          Size="153.6,41.6"
+          Id="Package\Sequence Container\Prune Unigrams"
+          TopLeft="344.000006130764,9.91596736709967" />
+        <EdgeLayout
+          Id="Package\Sequence Container.PrecedenceConstraints[Constraint]"
+          TopLeft="249.142857026081,31.2084042842826">
+          <EdgeLayout.Curve>
+            <mssgle:Curve
+              StartConnector="{assembly:Null}"
+              EndConnector="94.8571491046829,0"
+              Start="0,0"
+              End="87.3571491046829,0">
+              <mssgle:Curve.Segments>
+                <mssgle:SegmentCollection
+                  Capacity="5">
+                  <mssgle:LineSegment
+                    End="87.3571491046829,0" />
+                </mssgle:SegmentCollection>
+              </mssgle:Curve.Segments>
+            </mssgle:Curve>
+          </EdgeLayout.Curve>
+          <EdgeLayout.Labels>
+            <EdgeLabelCollection />
+          </EdgeLayout.Labels>
+        </EdgeLayout>
+        <EdgeLayout
+          Id="Package\Sequence Container.PrecedenceConstraints[Constraint 1]"
+          TopLeft="246.987754989435,105.08739269844">
+          <EdgeLayout.Curve>
+            <mssgle:Curve
+              StartConnector="{assembly:Null}"
+              EndConnector="98.2367402087844,0"
+              Start="0,0"
+              End="90.7367402087844,0">
+              <mssgle:Curve.Segments>
+                <mssgle:SegmentCollection
+                  Capacity="5">
+                  <mssgle:LineSegment
+                    End="90.7367402087844,0" />
+                </mssgle:SegmentCollection>
+              </mssgle:Curve.Segments>
+            </mssgle:Curve>
+          </EdgeLayout.Curve>
+          <EdgeLayout.Labels>
+            <EdgeLabelCollection />
+          </EdgeLayout.Labels>
+        </EdgeLayout>
+        <EdgeLayout
+          Id="Package\Sequence Container.PrecedenceConstraints[Constraint 2]"
+          TopLeft="250.987754989435,173.178152713549">
+          <EdgeLayout.Curve>
+            <mssgle:Curve
+              StartConnector="{assembly:Null}"
+              EndConnector="93.0122511413286,0"
+              Start="0,0"
+              End="85.5122511413286,0">
+              <mssgle:Curve.Segments>
+                <mssgle:SegmentCollection
+                  Capacity="5">
+                  <mssgle:LineSegment
+                    End="85.5122511413286,0" />
+                </mssgle:SegmentCollection>
+              </mssgle:Curve.Segments>
+            </mssgle:Curve>
+          </EdgeLayout.Curve>
+          <EdgeLayout.Labels>
+            <EdgeLabelCollection />
+          </EdgeLayout.Labels>
+        </EdgeLayout>
+        <EdgeLayout
+          Id="Package\Sequence Container.PrecedenceConstraints[Constraint 3]"
+          TopLeft="246.008163204137,248.008401658873">
+          <EdgeLayout.Curve>
+            <mssgle:Curve
+              StartConnector="{assembly:Null}"
+              EndConnector="95.9510258160252,0"
+              Start="0,0"
+              End="88.4510258160252,0">
+              <mssgle:Curve.Segments>
+                <mssgle:SegmentCollection
+                  Capacity="5">
+                  <mssgle:LineSegment
+                    End="88.4510258160252,0" />
+                </mssgle:SegmentCollection>
+              </mssgle:Curve.Segments>
+            </mssgle:Curve>
+          </EdgeLayout.Curve>
+          <EdgeLayout.Labels>
+            <EdgeLabelCollection />
+          </EdgeLayout.Labels>
+        </EdgeLayout>
+        <EdgeLayout
+          Id="Package\Sequence Container.PrecedenceConstraints[Constraint 4]"
+          TopLeft="241.991836659623,317.405040645269">
+          <EdgeLayout.Curve>
+            <mssgle:Curve
+              StartConnector="{assembly:Null}"
+              EndConnector="99.9673523605393,0"
+              Start="0,0"
+              End="92.4673523605393,0">
+              <mssgle:Curve.Segments>
+                <mssgle:SegmentCollection
+                  Capacity="5">
+                  <mssgle:LineSegment
+                    End="92.4673523605393,0" />
+                </mssgle:SegmentCollection>
+              </mssgle:Curve.Segments>
+            </mssgle:Curve>
+          </EdgeLayout.Curve>
+          <EdgeLayout.Labels>
+            <EdgeLabelCollection />
+          </EdgeLayout.Labels>
+        </EdgeLayout>
+        <ContainerLayout
+          HeaderHeight="43"
+          IsExpanded="True"
+          PanelSize="560.8,396"
+          Size="560.8,439.2"
+          Id="Package\Sequence Container"
+          TopLeft="269.569383011754,15.2537814059708" />
+        <EdgeLayout
+          Id="Package.PrecedenceConstraints[Constraint]"
+          TopLeft="197.942857434798,209.573111682803">
+          <EdgeLayout.Curve>
+            <mssgle:Curve
+              StartConnector="{assembly:Null}"
+              EndConnector="71.6265255769554,25.2806697231675"
+              Start="0,0"
+              End="64.1265255769554,25.2806697231675">
+              <mssgle:Curve.Segments>
+                <mssgle:SegmentCollection
+                  Capacity="5">
+                  <mssgle:LineSegment
+                    End="31.8132627884777,0" />
+                  <mssgle:CubicBezierSegment
+                    Point1="31.8132627884777,0"
+                    Point2="35.8132627884777,0"
+                    Point3="35.8132627884777,4" />
+                  <mssgle:LineSegment
+                    End="35.8132627884777,21.2806697231675" />
+                  <mssgle:CubicBezierSegment
+                    Point1="35.8132627884777,21.2806697231675"
+                    Point2="35.8132627884777,25.2806697231675"
+                    Point3="39.8132627884777,25.2806697231675" />
+                  <mssgle:LineSegment
+                    End="64.1265255769554,25.2806697231675" />
+                </mssgle:SegmentCollection>
+              </mssgle:Curve.Segments>
+            </mssgle:Curve>
+          </EdgeLayout.Curve>
+          <EdgeLayout.Labels>
+            <EdgeLabelCollection />
+          </EdgeLayout.Labels>
+        </EdgeLayout>
+      </GraphLayout>
+    </LayoutInfo>
+  </Package>
+</Objects>]]></DTS:DesignTimeProperties>
+</DTS:Executable>

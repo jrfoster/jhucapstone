@@ -1,0 +1,408 @@
+---
+title: "Data Processing Details"
+author: "jrfoster"
+date: "June 10, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r definition, echo=FALSE}
+assertPackage <- function(pkg) {
+  ##################################################################################
+  # Loads and attaches the given package, installing it if not already present.  
+  # Note that the implementation uses require.  ?require for more information.
+  #
+  # Args:
+  #   pkg: The package to check given as a name or a character string
+  #
+  # Side Effects:
+  # This method installs dependent packages of the given package.
+  # If not able to install what is required, halts termination.
+  ##################################################################################
+  if (!suppressMessages(require(pkg, character.only = TRUE, quietly = TRUE))) {
+    install.packages(pkg, dep=TRUE)
+    if (!suppressMessages(require(pkg, character.only = TRUE))) {
+      stop("Package not found")
+    }
+  }
+}
+
+assertData <- function() {
+  ##################################################################################
+  # Checks for the existence of the three text files contained in the capstone data
+  # set.  If all are not present, checks for the existence of the archive to extract
+  # them. If the archive is not present it downlaods it from the given location and
+  # extracts the entire archive and removes it to conserve space.
+  #
+  # Side Effects:
+  # Will create a directory called Coursera-Swiftkey in the working directory which
+  # will contain the files from the capstone data set.
+  ##################################################################################
+  dataDir <- file.path(getwd(), "Coursera-SwiftKey", "final", "en_US")
+  if (!file.exists(file.path(dataDir, "en_US.blogs.txt")) ||
+      !file.exists(file.path(dataDir, "en_US.news.txt")) ||
+      !file.exists(file.path(dataDir, "en_US.twitter.txt"))) {
+    if (!file.exists(file.path(getwd(), "Coursera-SwiftKey.zip"))) {
+      download.file("https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip", 
+        destfile = "Coursera-SwiftKey.zip")
+    }
+    unzip("Coursera-SwiftKey.zip", exdir = "Coursera-SwiftKey", overwrite = TRUE)
+    file.remove("Coursera-SwiftKey.zip")
+  }
+}
+
+assertOutputDir <- function(folder) {
+  ##################################################################################
+  # Checks for the existence of the the given folder and if not there creating it.
+  # Note that this folder is assumed to be a relative path of the current working
+  # directory.
+  #
+  # Args:
+  #   folder: The folder to ensure exists. Can be a nested folder structure.
+  #
+  # Side Effects:
+  #   Will create a directory named according to the folder given
+  ##################################################################################
+  if (!dir.exists(folder)) {
+    dir.create(folder, recursive=TRUE)
+  }
+}
+
+readText <- function(filepath) {
+  ##################################################################################
+  # Returns a dataframe containing the contents of the file given by the argument.
+  # Note that this implementation reads the files in binary mode to get around the
+  # existence of a substitute character in one of the data files, skips nulls and
+  # assumes the file is encoded as UTF-8.
+  #
+  # Args:
+  #   filepath: The fully qualified path to the file to read
+  # 
+  # Returns: 
+  #   Character vector of content of the given file
+  ##################################################################################
+  connection <- file(filepath, open = "rb")
+  on.exit(close(connection))
+  
+  # Two notes here, we use "rb" because there is a substitute character in the twitter 
+  # file and we skip null because each file has one line that contains null characters
+  data <- readLines(con = connection, encoding = "UTF-8", skipNul = TRUE)
+  data
+}
+
+preWash <- function(x) {
+  ##################################################################################
+  # Cleanses the given string by replacing commas with spaces, converting all text
+  # to ASCII characters (using iconv) and removing all underscores.
+  #
+  # Args:
+  #   x: The string to cleanse
+  #
+  # Returns:
+  #   Cleansed string
+  ##################################################################################
+  x <- gsub("[,]", " ", x)
+  x <- iconv(x, "UTF-8", "ASCII", sub=" ")
+  x <- gsub("[_]", "", x)
+  x
+}
+
+ngram_map <- function(range, rank) {
+  ##################################################################################
+  # Using a corpus named 'myCorp' in the global environment, reads the given range
+  # of documents from it and generates the n-gram denoted by rank. Note that the
+  # document is split into sentences using the Quanteda sentence tokenizer, each
+  # sentence is cleansed using preWash, the sentence is then tokenized with the
+  # Quanteda word tokenizer using the given rank, with numbers, punctuation, symbols,
+  # separators, twitter characters, hyphens and urls all removed.
+  #
+  # Note that this method essentially acts as a task within a map step of a larger 
+  # map-reduce style of n-gram generation. Callers should be aware that this method, 
+  # when called repeatedly over consecutive ranges of documents in the corpus *will*
+  # produce duplicated n-grams.  The caller is responsible for doing any subsequent
+  # reduce steps to remove duplicates.
+  #
+  # Args:
+  #   range: The range of documents to tokenize from the corpus given as a vector of
+  #          indices representing corpus documents (e.g. 1:3 means the first three
+  #          documents in the corpus)
+  #   rank: The n-gram to generate (e.g. 1 for unigrams, 2 for bigrams, etc.)
+  #
+  # Returns:
+  #   A data table containing an n-gram of the given rank and its frequency within the
+  #   given range of documents.
+  ##################################################################################
+  retVal <- data.table(ngram = character(), count = integer())
+  for (i in range) {
+    sentences <- tokenize(myCorp$documents$texts[i], what="sentence")
+    for (j in 1:length(sentences[[1]])) {
+      target <- preWash(sentences[[1]][[j]])
+      tokens <- tokenize(char_tolower(target), what="word", ngrams=rank,
+                         remove_numbers = TRUE, 
+                         remove_punct = TRUE, 
+                         remove_symbols = TRUE, 
+                         remove_separators = TRUE, 
+                         remove_twitter = TRUE, 
+                         remove_hyphens = TRUE,
+                         remove_url = TRUE, simplify=TRUE)
+      df <- data.table(ngram = tokens, count = rep(1, length(tokens)), stringsAsFactors = FALSE)
+      retVal <- bind_rows(retVal, df)
+    }
+  }
+
+  retVal <- retVal %>%
+    group_by(ngram) %>%
+    summarize(count = sum(count))
+
+  retVal
+}
+
+load_data <- function(filepath) {
+  ##################################################################################
+  # Reads all the csv files in the given folder and combines them into a single 
+  # data frame
+  #
+  # Args:
+  #   filepath: The path from which to read csv files. Can be absolute or relative
+  #             but defaults to the current working directory.
+  #
+  # Returns:
+  #   A dataframe containing the combined contents of all csv files in the given path
+  ##################################################################################
+  files <- dir(filepath, pattern = '\\.csv', full.names = TRUE)
+  tables <- lapply(files, read.csv, stringsAsFactors=FALSE)
+  bind_rows(tables)
+}
+
+createNGrams <- function(folder, ngram=1, chunkSize=1000) {
+  ##################################################################################
+  # Essentially acts as the map step in a map-reduce style of n-gram generation, by
+  # calculating the number of chunks required to generate the requested n-grams in
+  # the requested folder. Callers should be aware that this method *will* generate
+  # files containing duplicate n-grams and are therefore responsible for removing
+  # them in a subsequent reduce step.
+  #
+  # Callers should also be aware that this method will create what I would normally
+  # call a metric f-ton of files and can consume massive amounts of disk space, so
+  # beware.
+  #
+  # Args:
+  #   folder: The folder to use to write the n-gram chunks into
+  #   ngram: The rank of n-gram to generate (e.g. 1 for unigram, 2 for bigram, etc.)
+  #   chunksize: The number of documents in the corpus to use as a batch size
+  #
+  # Side Effects:
+  #   Will create *numerous* files in the given folder containing the n-gram and 
+  #   associated frequencies from each chunk.
+  ##################################################################################
+  outDir <- file.path(getwd(), folder)
+  assertOutputDir(outDir)
+  numChunk <- ceiling(nrow(myCorp$documents) / chunkSize) - 1
+  pos <- 1
+  for (i in 0:numChunk) {
+    size <- min(chunkSize, nrow(myCorp$documents) - i * chunkSize)
+    r = seq(pos, (pos+size-1))
+    n = ngram_map(range=r, rank=ngram)
+    print(paste(min(r),":",max(r)))
+    fwrite(n, file.path(outDir,paste("chunk_",i,".csv", sep="")))
+    pos <- pos + chunkSize
+  }
+  
+  # This is the "reduce" step where all the ngrams get collected into a single set and persisted
+  # Note that we are only interested in creating the combined set of ngram csv files, they will
+  # be combined by a database step later in the process.
+  combined <- load_data(outDir)
+  fwrite(combined, file.path(outDir, "combined.csv"), buffMB = 13, nThread=13)  
+}
+
+```
+
+## Executive Summary
+
+
+
+## Obtain and Load the Raw Data
+
+The data is downloaded from the location given in the Capstone project and extracted into a named sub-directory within the current working directory. The appendix contains the code for the custom functions used to obtain and stage the data.
+
+```{r setup_data, echo=TRUE, eval=FALSE}
+assertPackage("quanteda")
+assertPackage("data.table")
+assertPackage("dplyr")
+assertPackage("RSQLite")
+
+setwd("c:/devr/capstone")
+
+assertData()
+
+dataDir <- file.path(getwd(), "Coursera-SwiftKey", "final", "en_US")
+
+# Reproducability
+set.seed(13031)
+```
+
+## Clean Data and Create Corpus
+
+Even though the data is quite large, comprising more than 4 million documents in total, I found during exploration and testing that the Quanteda package, while not as good at cleansing and providing flexibility to extend that functionality, it was significantly faster to tokenize documents. These speed enhancemenets enabled me to use a relatively large sample of the data: 75% of news and blog articles and 25% of tweets which combined to be approximately half of the entire corpus.  I used rbinom to create the random samples and then loaded those subsets into a Quanteda corpus object.
+
+```{r buildcorpus, echo=TRUE, eval=FALSE}
+# Create a random sample of about 1/4 of the data in each of the sets using rbinom
+blog <- readText(file.path(dataDir, "en_US.blogs.txt"))
+blogIn <- rbinom(n=length(blog), size=1, prob=.75)
+blogSample <- blog[blogIn == 1]
+
+news <- readText(file.path(dataDir, "en_US.news.txt"))
+newsIn <- rbinom(n=length(news), size=1, prob=.75)
+newsSample <- news[newsIn == 1]
+
+twtr <- readText(file.path(dataDir, "en_US.twitter.txt"))
+twtrIn <- rbinom(n=length(twtr), size=1, prob=.25)
+twtrSample <- twtr[twtrIn == 1]
+
+# Load the samples into a corpus
+myCorp <- corpus(c(blogSample,newsSample,twtrSample))
+
+# Clean up some items from memory 
+rm(blog)
+rm(blogIn)
+rm(blogSample)
+rm(news)
+rm(newsIn)
+rm(newsSample)
+rm(twtr)
+rm(twtrSample)
+rm(twtrIn)
+rm(dataDir)
+
+# gc a few times to recapture that memory
+for (i in 1:10) {
+  ignored <- gc()
+}
+ignored
+rm(ignored)
+rm(i)
+```
+
+## N-Gram Generation
+
+Using a combination of the speed improvements in the Quanteda package and adopting a map-reduce style of n-gram generation, I generated n-grams up to rank 5 from the built corups. This process still took nearly 12 hours on my computer, but it would be possible to get far better performance using actual map-reduce or a technology like Apache Spark on an analytics cluster running in AWS.
+
+```{r ngrams, echo=TRUE, eval=FALSE}
+# Create all the ngrams from the corpus. Note that this step will produce files with the combined set
+# of ngrams and will therefore contain duplicates. The actual "reduce step will be performed outside
+# R in SQL Server because of size and speed considerations in the generation of all these ngrams.
+# Note that this process from start to finish took approximately 12 hours to complete
+createNGrams(folder = "final/unigrams", ngram = 1, chunkSize = 1000)
+createNGrams(folder = "final/bigrams", ngram = 2, chunkSize = 1000)
+createNGrams(folder = "final/trigrams", ngram = 3, chunkSize = 1000)
+createNGrams(folder = "final/quadragrams", ngram = 4, chunkSize = 1000)
+createNGrams(folder = "final/quintagrams", ngram = 5, chunkSize = 1000)
+```
+
+I chose to perform the reduce step in SQL Server, since in my testing, and after multiple passes at n-gram generation, it took dplyr an hour to combine and reduce my quintagrams while SQL Server could do the same processing in under 5 minutes.  I used SQL Server Integration Services (SSIS) to provide a reproducible means of importing these files into the database and performing the requisite reduce steps using simple SQL. There is no means to include that code here, so I leave it to the reader to investigate how that would be done.
+
+The result of this reduce step is a series of tables holding the combined and reduced n-grams and their associated frequencies (with duplicates removed). From this, I used some basic SQL statements to load subsets of each n-gram into other tables that I could export to csv and load into SQLite tables for use in the prediction algorithm.
+
+I think there must be some type of black art in determining the right mix of n-grams for prediction, and I played with a bunch of method for determining what that set should be, targeting the SQLite database size of 100MB or less. I examined the frequency distributions of each of the sets of n-grams and played around with various frequency thresholds based on percent coverage, resulting size, which n-grams held the most influence on the accuracy of prediction. I think it would be interesting to talk with a seasoned data scientist to discuss what I discovered...
+
+In the end, I settled on the following as the frequency thresholds to include for pruding n-grams to include for prediction.  Note that the structure I used to store the n-grams for prediction is an optimization where I split the root of the n-gram and the last word. This structure enabales me to use an index-based query in the prediction algorithm rather than a glob- or like-based query, which are orders of magnitude slower.
+
+```{sql pruning, echo=TRUE, eval=FALSE}
+truncate table quintagrams
+insert quintagrams
+select
+	left(ngram, len(ngram) - charindex('_', reverse(ngram) + '_'))
+	,right(ngram, charindex('_', reverse(ngram) + '_') - 1)
+	,frequency
+from combined_quintagrams
+where frequency > 2
+
+truncate table quadragrams
+insert quadragrams
+select
+	left(ngram, len(ngram) - charindex('_', reverse(ngram) + '_'))
+	,right(ngram, charindex('_', reverse(ngram) + '_') - 1)
+	,frequency
+from combined_quadragrams
+where frequency > 4
+
+truncate table trigrams
+insert trigrams
+select
+	left(ngram, len(ngram) - charindex('_', reverse(ngram) + '_'))
+	,right(ngram, charindex('_', reverse(ngram) + '_') - 1)
+	,frequency
+from combined_trigrams
+where frequency > 8
+
+truncate table bigrams
+insert bigrams
+select
+	left(ngram, len(ngram) - charindex('_', reverse(ngram) + '_'))
+	,right(ngram, charindex('_', reverse(ngram) + '_') - 1)
+	,frequency
+from combined_bigrams
+where frequency > 8
+
+truncate table unigrams
+insert unigrams
+select ngram as "word", frequency
+from combined_unigrams
+where frequency > 1
+```
+
+## Creating the Prediction Database
+
+From these pruned tables I created csv files, again, using SSIS so that the process was fast, parallel, and repeatable.  Once the csv files were loaded, the following R code loads them into a SQLite database for consumption by the prediction algorithm.
+
+```{r loaddb, echo=TRUE, eval=FALSE}
+setwd("c:/devR/Capstone")
+dbDir <- file.path(getwd(), "sqlite", "ngrams.sqlite")
+db <- dbConnect(SQLite(), dbDir)
+
+ngrams <- read.csv("quintagrams.csv", stringsAsFactors = FALSE)
+dbWriteTable(conn = db, name = "quintagrams", value = ngrams, row.names = FALSE, append = TRUE)
+
+ngrams <- read.csv("quadragrams.csv", stringsAsFactors = FALSE)
+dbWriteTable(conn = db, name = "quadragrams", value = ngrams, row.names = FALSE, append = TRUE)
+
+ngrams <- read.csv("trigrams.csv", stringsAsFactors = FALSE)
+dbWriteTable(conn = db, name = "trigrams", value = ngrams, row.names = FALSE, append = TRUE)
+
+ngrams <- read.csv("bigrams.csv", stringsAsFactors = FALSE)
+dbWriteTable(conn = db, name = "bigrams", value = ngrams, row.names = FALSE, append = TRUE)
+
+ngrams <- read.csv("unigrams.csv", stringsAsFactors = FALSE)
+dbWriteTable(conn = db, name = "unigrams", value = ngrams, row.names = FALSE, append = TRUE)
+
+rm(ngrams)
+
+rs <- dbSendQuery(conn = db, "CREATE INDEX quint_idx ON quintagrams(root)")
+dbClearResult(rs)
+
+rs <- dbSendQuery(conn = db, "CREATE INDEX quad_idx ON quadragrams(root)")
+dbClearResult(rs)
+
+rs <- dbSendQuery(conn = db, "CREATE INDEX tri_idx ON trigrams(root)")
+dbClearResult(rs)
+
+rs <- dbSendQuery(conn = db, "CREATE INDEX bi_idx ON bigrams(root)")
+dbClearResult(rs)
+
+rs <- dbSendQuery(conn = db, "CREATE INDEX uni_idx ON unigrams(word)")
+dbClearResult(rs)
+
+dbDisconnect(db)
+```
+
+## Appendix
+
+This appendix contains code for the supporting functions used in this analysis.
+
+```{r definition, echo=TRUE, eval=FALSE}
+```
+
+## References

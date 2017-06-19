@@ -1,7 +1,10 @@
-require(RSQLite)
-require(quanteda)
-require(dplyr)
-require(data.table)
+source("../Shared/Common.R")
+
+assertPackage("RSQLite")
+assertPackage("RSQLite")
+assertPackage("quanteda")
+assertPackage("dplyr")
+assertPackage("data.table")
 
 getConnection <- function() {
   ##################################################################################
@@ -12,23 +15,6 @@ getConnection <- function() {
   ##################################################################################
   db <- dbConnect(SQLite(), "./sqlite/ngrams.sqlite")
   db
-}
-
-preWash <- function(x) {
-  ##################################################################################
-  # Removes and replaces some unwanted characters in the input string to help ensure
-  # that what gets queried for and used in predictions matches the text in the corpus
-  #
-  # Args:
-  #   x: text to be scrubbed
-  # 
-  # Returns: 
-  #   A scrubbed string
-  ##################################################################################
-  x <- gsub("[,]", " ", x)
-  x <- iconv(x, "UTF-8", "ASCII", sub=" ")
-  x <- gsub("[_]", "", x)
-  x
 }
 
 tokenizeInput <- function(phrase) {
